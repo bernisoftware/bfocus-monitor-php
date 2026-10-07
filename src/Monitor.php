@@ -22,7 +22,7 @@ namespace Bfocus\Monitor;
  */
 final class Monitor
 {
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.1.1';
     public const SDK_NAME = 'bfocus-monitor-php';
     public const CLIENT_ID = self::SDK_NAME . '/' . self::VERSION;
 
