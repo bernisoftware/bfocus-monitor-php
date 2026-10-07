@@ -1,0 +1,47 @@
+{
+    "name": "bfocus/monitor",
+    "description": "Monitoramento de erros do bFocus para PHP: captura os erros não tratados e manda para o bFocus, onde viram demanda. Laravel e PSR-15 (Laminas/Mezzio/Slim).",
+    "type": "library",
+    "keywords": ["bfocus", "monitor", "monitoramento", "erros", "exceptions", "error tracking", "laravel", "psr-15", "laminas", "mezzio"],
+    "homepage": "https://bfocus.com.br",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Berni Software",
+            "homepage": "https://bfocus.com.br"
+        }
+    ],
+    "support": {
+        "source": "https://github.com/bernisoftware/bfocus-monitor-php",
+        "issues": "https://github.com/bernisoftware/bfocus-monitor-php/issues"
+    },
+    "require": {
+        "php": ">=8.1",
+        "ext-curl": "*",
+        "ext-json": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5 || ^11.5 || ^12.0",
+        "psr/http-server-middleware": "^1.0"
+    },
+    "suggest": {
+        "psr/http-server-middleware": "Para usar Bfocus\\Monitor\\Psr15Middleware (Laminas, Mezzio, Slim)."
+    },
+    "autoload": {
+        "psr-4": {
+            "Bfocus\\Monitor\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Bfocus\\Monitor\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable"
+}

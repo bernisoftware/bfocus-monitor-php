@@ -1,0 +1,117 @@
+# Espelho público bernisoftware/bfocus-monitor-php (gerado por scripts/release-monitor.sh no monorepo,
+# a partir de monitor/php).
+#
+# O Packagist lê este repo e deriva as versões das TAGS git (o composer.json não leva versão; a fonte
+# única é Bfocus\Monitor\Monitor::VERSION). Com a integração GitHub↔Packagist ligada ele atualiza
+# sozinho; este workflow só publica depois da suíte verde e FORÇA a atualização imediata. Secrets:
+#   PACKAGIST_USERNAME, PACKAGIST_TOKEN (packagist.org → Profile → Show API Token)
+#
+# Ordem: testes no PHP mínimo (8.1) e máximo (8.4) → tag == Monitor::VERSION → build → testes contra o
+# artefato → publicação. Os testes que comparam com o monorepo (monitor/release.json e
+# monitor/conformance/cases.json) pulam sozinhos aqui.
+name: publish
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: testes (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        php: ['8.1', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: curl, json
+          coverage: none
+          tools: composer:v2
+      - run: composer validate --strict
+      # Sem composer.lock (biblioteca): cada PHP resolve o PHPUnit que suporta.
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - name: PHPUnit (conformidade + unitários + Laravel/PSR-15 + processo)
+        run: vendor/bin/phpunit
+
+  artifact:
+    name: build + testes contra o artefato
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: curl, json
+          coverage: none
+          tools: composer:v2
+
+      - name: Tag == Monitor::VERSION
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          CODE_VERSION="$(sed -nE "s/.*public const VERSION = '([^']+)'.*/\1/p" src/Monitor.php)"
+          echo "tag=$TAG_VERSION  Monitor::VERSION=$CODE_VERSION"
+          if [ "$TAG_VERSION" != "$CODE_VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME != Bfocus\\Monitor\\Monitor::VERSION $CODE_VERSION"
+            exit 1
+          fi
+
+      - name: Build (git archive — o mesmo conteúdo do zip que o Packagist serve)
+        run: |
+          mkdir -p build/pkg
+          git archive HEAD | tar -x -C build/pkg
+
+      - name: Instala o artefato num projeto limpo (como o usuário recebe)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p build/app
+          cat > build/app/composer.json <<JSON
+          {
+            "repositories": [
+              {"type": "path", "url": "../pkg", "options": {"symlink": false, "versions": {"bfocus/monitor": "$VERSION"}}}
+            ],
+            "require": {"bfocus/monitor": "$VERSION"},
+            "minimum-stability": "stable"
+          }
+          JSON
+          cd build/app
+          composer install --no-interaction --no-progress
+          # a classe vem do artefato instalado em vendor/, e a versão dela é a da tag
+          php -r 'require "vendor/autoload.php";
+            $f = (new ReflectionClass(Bfocus\Monitor\Monitor::class))->getFileName(); echo $f, PHP_EOL;
+            if (!str_contains($f, "/vendor/bfocus/monitor/")) { fwrite(STDERR, "não veio do artefato\n"); exit(1); }
+            if (Bfocus\Monitor\Monitor::VERSION !== $argv[1]) { fwrite(STDERR, "VERSION != tag\n"); exit(1); }' "$VERSION"
+
+      # A suíte viaja dentro do artefato (não há export-ignore): roda a partir dele, com o autoload
+      # dele (inclusive o ProcessTest, que sobe processos PHP com o vendor/autoload.php do pacote).
+      - name: Suíte contra o artefato
+        working-directory: build/pkg
+        run: |
+          composer install --no-interaction --no-progress --prefer-dist
+          php -r 'require "vendor/autoload.php"; $f = (new ReflectionClass(Bfocus\Monitor\Monitor::class))->getFileName(); echo $f, PHP_EOL; exit(str_contains($f, "/build/pkg/src/") ? 0 : 1);'
+          vendor/bin/phpunit
+
+  packagist:
+    name: publica no Packagist
+    needs: artifact
+    runs-on: ubuntu-latest
+    steps:
+      # 1ª publicação: o pacote ainda não existe no Packagist — cadastra pela API (com o mesmo
+      # token). Já cadastrado, o Packagist responde erro e seguimos para a atualização.
+      - name: Cadastra o pacote (só na primeira vez)
+        run: |
+          curl -s -XPOST -H 'content-type:application/json' \
+            "https://packagist.org/api/create-package?username=${{ secrets.PACKAGIST_USERNAME }}&apiToken=${{ secrets.PACKAGIST_TOKEN }}" \
+            -d '{"repository":{"url":"https://github.com/${{ github.repository }}"}}' || true
+      - name: Força a atualização do pacote
+        run: |
+          curl -sf -XPOST -H 'content-type:application/json' \
+            "https://packagist.org/api/update-package?username=${{ secrets.PACKAGIST_USERNAME }}&apiToken=${{ secrets.PACKAGIST_TOKEN }}" \
+            -d '{"repository":{"url":"https://github.com/${{ github.repository }}"}}'

@@ -1,0 +1,6 @@
+/vendor/
+# Biblioteca: quem instala resolve as próprias dependências (o lock não vai pro Packagist).
+composer.lock
+.phpunit.cache/
+.phpunit.result.cache
+/build/
